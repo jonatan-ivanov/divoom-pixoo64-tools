@@ -1,0 +1,232 @@
+#! /bin/bash
+# API docs of Pixoo 64: https://docin.divoom-gz.com/web/#/5/24
+
+VERSION='0.1.0'
+CACHE_FILE='.cache/.devices'
+
+function usage {
+	printf 'Usage: p64 <command> or p64 --help or p64 --version]\n'
+	printf 'Available commands:\n'
+	printf '\tdevices \t\t\t\tList devices\n'
+	printf '\tdevices-cache \t\t\t\tGenerate cache of device list\n'
+	printf '\tdevice-ip [--name] \t\t\tGet the IP of the device\n'
+	printf '\thealth [--ip | --name] \t\t\tCheck device connectivity\n'
+	printf '\treboot[--ip | --name] \t\t\tReboot the device\n'
+	printf '\tclock-info[--ip | --name] \t\tCall the "Clock Info API"\n'
+	printf '\treset-pic-id [--ip | --name] \t\tCall the "Pic ID reset API" (should not be needed)\n'
+	printf '\tdraw-image <file> [--ip | --name] \tAsk the device to display the image\n'
+}
+
+function version {
+	printf '%s\n' "$VERSION"
+}
+
+# $1: error message
+function log-error() {
+	printf "%s\n" "$1" >&2
+}
+
+# $1: exit code
+# $2: error message
+function check-errors {
+	if [ "$1" -ne 0 ]; then
+		log-error "$2"
+		exit "$1"
+	fi
+}
+
+# Call the "Find device" endpoint if no CACHE_FILE exists and return the list of devices on the same LAN.
+# You need internet access to run this (if no CACHE_FILE exists) and the IP is the local (private) IP of the given device.
+# See: .DeviceList[].DevicePrivateIP in the response
+# See: https://docin.divoom-gz.com/web/#/5/25
+function devices {
+	if [ -f "$CACHE_FILE" ]; then
+		jq '.' "$CACHE_FILE"
+	else
+		devices-nocache
+	fi
+}
+
+function devices-nocache {
+	url='https://app.divoom-gz.com/Device/ReturnSameLANDevice'
+	result=$(curl --silent --show-error --location --fail "$url" 2>&1)
+	check-errors "$?" "$result"
+	jq <<< "$result"
+}
+
+# Writes the result of devices to CACHE_FILE
+# The CACHE_FILE is not refreshed automatically, you need to run devices-cache to update it
+function devices-cache {
+	devices_result=$(devices-nocache)
+	check-errors "$?" "$devices_result"
+
+	mkdir -p '.cache'
+	printf "%s\n" "$devices_result" > "$CACHE_FILE"
+}
+
+# Get the IP of the device [by name].
+# If the name is not specified, it returns the first device.
+# If there is no device with the specified name it terminates with an error.
+# $1: IP, if present the command will return it as-is
+# $2: device name
+function device-ip {
+	if [ -n "$1" ]; then
+		printf "%s\n" "$1"
+		return 0
+	fi
+
+	if [ -z "$2" ]; then
+		devices_result=$(devices)
+		check-errors "$?" "$devices_result"
+		query='.DeviceList[0].DevicePrivateIP'
+	else
+		devices_result=$(devices)
+		check-errors "$?" "$devices_result"
+		query=".DeviceList[] | select(.DeviceName == \"$2\") | .DevicePrivateIP"
+	fi
+
+	ip_result=$(jq --raw-output "$query" <<< "$devices_result")
+	check-errors "$?" "$ip_result"
+	if [ -z "$ip_result" ]; then
+		log-error 'Device not found!'
+		exit 4
+	else
+		printf "%s\n" "$ip_result"
+	fi
+}
+
+# Check if the device is accessible on the network [by ip or name or first device].
+# $1: IP
+# $2: device name
+function health {
+	ip_result=$(device-ip "$1" "$2")
+	check-errors "$?" "$ip_result"
+
+	health_result=$(curl --silent --show-error --fail "$ip_result/get" 2>&1)
+	check-errors "$?" "$health_result"
+}
+
+# $1: IP
+# $2: device name
+# $3: Command object (JSON) to run
+function run-device-command {
+	ip_result=$(device-ip "$1" "$2")
+	check-errors "$?" "$ip_result"
+
+	command_result=$(curl --silent --show-error --fail --data "$3" "$ip_result/post" 2>&1)
+	check-errors "$?" "$command_result"
+	jq <<< "$command_result"
+}
+
+# $1: IP
+# $2: device name
+function reboot {
+	run-device-command "$1" "$2" '{ "Command": "Device/SysReboot" }'
+}
+
+# $1: IP
+# $2: device name
+function clock-info {
+	run-device-command "$1" "$2" '{ "Command": "Channel/GetClockInfo" }'
+}
+
+# $1: IP
+# $2: device name
+function reset-pic-id {
+	run-device-command "$1" "$2" '{ "Command": "Draw/ResetHttpGifId" }'
+}
+
+# $1: IP
+# $2: device name
+# $3: filename
+function draw-image {
+	if [ -z "$3" ]; then
+		log-error 'Filename is missing! See --help for details.'
+		exit 1
+	fi
+
+	pic_id_command_result=$(run-device-command "$1" "$2" '{ "Command": "Draw/GetHttpGifId" }')
+	check-errors "$?" "$pic_id_command_result"
+
+	image_data_result=$(magick "$3" -resize 64x64! rgb:- | base64)
+	check-errors "$?" "$image_data_result"
+
+	send_image_command="
+		{
+			\"Command\": \"Draw/SendHttpGif\",
+			\"PicNum\": 1,
+			\"PicWidth\": 64,
+			\"PicOffset\": 0,
+			\"PicID\": $(jq --raw-output '.PicId' <<< "$pic_id_command_result"),
+			\"PicSpeed\": 100,
+			\"PicData\": \"$image_data_result\"
+		}
+	"
+	run-device-command "$1" "$2" "$send_image_command"
+}
+
+opts=$(getopt --longoptions 'ip:,name:,help,version' --options '' -- "$@")
+check-errors "$?" "$opts"
+eval set -- "$opts"
+
+for opts; do
+	case "$opts" in
+		--help)
+			usage
+			exit 0
+			;;
+		--version)
+			version
+			exit 0
+			;;
+		--ip)
+			ip=$2
+			shift 2
+			;;
+		--name)
+			name=$2
+			shift 2
+			;;
+		--)
+			shift
+			break
+			;;
+	esac
+done
+
+if [ $# -eq 0 ]; then
+	usage
+	exit 1
+fi
+
+case "$1" in
+	devices)
+		devices
+		;;
+	devices-cache)
+		devices-cache
+		;;
+	device-ip)
+		device-ip "$ip" "$name"
+		;;
+	health)
+		health "$ip" "$name"
+		;;
+	reboot)
+		reboot "$ip" "$name"
+		;;
+	clock-info)
+		clock-info "$ip" "$name"
+		;;
+	reset-pic-id)
+		reset-pic-id "$ip" "$name"
+		;;
+	draw-image)
+		shift
+		draw-image "$ip" "$name" "$@"
+		;;
+	*)
+		usage
+		exit 1
+		;;
+esac
