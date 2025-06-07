@@ -15,6 +15,7 @@ usage() {
 	printf '\tclock-info[--ip | --name] \t\tCall the "Clock Info API"\n'
 	printf '\treset-pic-id [--ip | --name] \t\tCall the "Pic ID reset API" (should not be needed)\n'
 	printf '\tdraw-image <file> [--ip | --name] \tAsk the device to display the image\n'
+	printf '\tset-channel <index> [--ip | --name] \tSwitch to channel (0:Faces,1:Cloud,2:Visualizer,3:Custom,4:Blank Screen)\n'
 }
 
 version() {
@@ -170,6 +171,25 @@ draw_image() {
 	run_device_command "$1" "$2" "$send_image_command"
 }
 
+# $1: IP
+# $2: device name
+# $3: channel index: 0:Faces,1:Cloud,2:Visualizer,3:Custom,4:Blank Screen
+# see: https://docin.divoom-gz.com/web/#/5/31
+set_channel() {
+	if [ -z "$3" ]; then
+		log_error 'Channel index is missing! See --help for details.'
+		exit 1
+	fi
+
+	set_channel_command="
+		{
+			\"Command\": \"Channel/SetIndex\",
+			\"SelectIndex\": $3
+		}
+	"
+	run_device_command "$1" "$2" "$set_channel_command"
+}
+
 opts=$(getopt --longoptions 'ip:,name:,help,version' --options '' -- "$@")
 check_errors "$?" "$opts"
 eval set -- "$opts"
@@ -229,6 +249,10 @@ case "$1" in
 	draw-image)
 		shift
 		draw_image "$ip" "$name" "$@"
+		;;
+	set-channel)
+		shift
+		set_channel "$ip" "$name" "$@"
 		;;
 	*)
 		usage

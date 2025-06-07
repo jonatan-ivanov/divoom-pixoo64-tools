@@ -102,6 +102,18 @@ p64 reset-pic-id --ip '192.168.0.100'
 If the command is successful, it will display the JSON response from the device, otherwise you will get a non-zero error code and an error message on `stderr`.
 If IP is not specified, this uses `device-ip` (see above, please notice the note about the `CACHE_FILE`).
 
+### Set Channel
+
+[Switch to channel](https://docin.divoom-gz.com/web/#/5/31) (0:Faces,1:Cloud,2:Visualizer,3:Custom,4:Blank Screen)
+
+```sh
+p64 set-channel 0
+p64 set-channel 0 --name 'Pixoo64'
+p64 set-channel 0 --ip '192.168.0.100'
+```
+
+If the command is successful, it will display the JSON response from the device, otherwise you will get a non-zero error code and an error message on `stderr`.
+If IP is not specified, this uses `device-ip` (see above, please notice the note about the `CACHE_FILE`).
 
 ## Dependencies
 
