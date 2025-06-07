@@ -37,8 +37,8 @@ check_errors() {
 
 # Call the "Find device" endpoint if no CACHE_FILE exists and return the list of devices on the same LAN.
 # You need internet access to run this (if no CACHE_FILE exists) and the IP is the local (private) IP of the given device.
-# See: .DeviceList[].DevicePrivateIP in the response
-# See: https://docin.divoom-gz.com/web/#/5/25
+# see: .DeviceList[].DevicePrivateIP in the response
+# see: https://docin.divoom-gz.com/web/#/5/25
 devices() {
 	if [ -f "$CACHE_FILE" ]; then
 		jq '.' "$CACHE_FILE"
@@ -120,18 +120,21 @@ run_device_command() {
 
 # $1: IP
 # $2: device name
+# see: https://docin.divoom-gz.com/web/#/5/26
 reboot() {
 	run_device_command "$1" "$2" '{ "Command": "Device/SysReboot" }'
 }
 
 # $1: IP
 # $2: device name
+# see: https://docin.divoom-gz.com/web/#/5/30
 clock_info() {
 	run_device_command "$1" "$2" '{ "Command": "Channel/GetClockInfo" }'
 }
 
 # $1: IP
 # $2: device name
+# see: https://docin.divoom-gz.com/web/#/5/56
 reset_pic_id() {
 	run_device_command "$1" "$2" '{ "Command": "Draw/ResetHttpGifId" }'
 }
@@ -139,6 +142,7 @@ reset_pic_id() {
 # $1: IP
 # $2: device name
 # $3: filename
+# see: https://docin.divoom-gz.com/web/#/5/57
 draw_image() {
 	if [ -z "$3" ]; then
 		log_error 'Filename is missing! See --help for details.'

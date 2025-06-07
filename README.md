@@ -51,7 +51,7 @@ If IP is not specified, this uses `device-ip` (see above, please notice the note
 
 ### Reboot
 
-Reboots the device.
+[Reboot](https://docin.divoom-gz.com/web/#/5/26) the device.
 
 ```sh
 p64 reboot
