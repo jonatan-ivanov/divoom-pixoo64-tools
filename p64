@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /bin/sh
 # API docs of Pixoo 64: https://docin.divoom-gz.com/web/#/5/24
 
 VERSION='0.1.0'
@@ -51,7 +51,7 @@ devices_nocache() {
 	url='https://app.divoom-gz.com/Device/ReturnSameLANDevice'
 	result=$(curl --silent --show-error --location --fail "$url" 2>&1)
 	check_errors "$?" "$result"
-	jq <<< "$result"
+	printf "%s\n" "$result" | jq
 }
 
 # Writes the result of devices to CACHE_FILE
@@ -85,7 +85,7 @@ device_ip() {
 		query=".DeviceList[] | select(.DeviceName == \"$2\") | .DevicePrivateIP"
 	fi
 
-	ip_result=$(jq --raw-output "$query" <<< "$devices_result")
+	ip_result=$(printf "%s\n" "$devices_result" | jq --raw-output "$query")
 	check_errors "$?" "$ip_result"
 	if [ -z "$ip_result" ]; then
 		log_error 'Device not found!'
@@ -115,7 +115,7 @@ run_device_command() {
 
 	command_result=$(curl --silent --show-error --fail --data "$3" "$ip_result/post" 2>&1)
 	check_errors "$?" "$command_result"
-	jq <<< "$command_result"
+	printf "%s\n" "$command_result" | jq
 }
 
 # $1: IP
@@ -147,6 +147,7 @@ draw_image() {
 
 	pic_id_command_result=$(run_device_command "$1" "$2" '{ "Command": "Draw/GetHttpGifId" }')
 	check_errors "$?" "$pic_id_command_result"
+	pic_id=$(printf "%s\n" "$pic_id_command_result" | jq --raw-output '.PicId')
 
 	image_data_result=$(magick "$3" -resize 64x64! rgb:- | base64)
 	check_errors "$?" "$image_data_result"
@@ -157,7 +158,7 @@ draw_image() {
 			\"PicNum\": 1,
 			\"PicWidth\": 64,
 			\"PicOffset\": 0,
-			\"PicID\": $(jq --raw-output '.PicId' <<< "$pic_id_command_result"),
+			\"PicID\": $pic_id,
 			\"PicSpeed\": 100,
 			\"PicData\": \"$image_data_result\"
 		}
